@@ -1,0 +1,418 @@
+---
+name: blitz
+description: A pre-reset backlog runner for Claude Max subscribers. Queue real tasks during the week ("/blitz add ..."), then blitz through them in parallel — manually with /blitz, or automatically before each session/weekly reset. Persists every agent's output to ~/blitz/runs/<timestamp>/ so nothing is lost. Includes commands to add, list, remove, run, configure schedules, and disable/skip auto-fires.
+---
+
+# ⚡ Blitz — Pre-Reset Backlog Runner
+
+A Claude Code skill for people on Claude Max plans. Queue tasks you've been meaning to get to during the week. Blitz runs them through parallel agents — on demand, or automatically right before your quota resets — and writes every agent's output to disk so you wake up to actual artifacts, not a closed terminal.
+
+**Parallelism is for throughput, not quota multiplication.** Five agents finish five tasks in the time of one — that's the win.
+
+---
+
+## Step 0 — Route by Subcommand
+
+Read the first word of arguments after `/blitz`:
+
+| Subcommand | Action |
+|---|---|
+| `add` | Add a task to the backlog (M-ADD) |
+| `list`, `ls` | Show the backlog (M-LIST) |
+| `remove`, `rm` | Remove a backlog item by number (M-REMOVE) |
+| `clear` | Clear all backlog (with confirmation) (M-CLEAR) |
+| `setup` | Run the configuration wizard (M-SETUP) |
+| `auto` | Unattended scheduled run (M-AUTO) |
+| `off` | Disable auto-schedule firing (M-OFF) |
+| `on` | Re-enable auto-schedule firing (M-ON) |
+| `skip` | Skip the next scheduled auto-fire (M-SKIP) |
+| empty / anything else | **Run the backlog now** (M-RUN) |
+
+**Config path:** `~/.claude/blitz.json` (Windows: `C:\Users\<user>\.claude\blitz.json`)
+**Output path:** `~/blitz/runs/<timestamp>/` (Windows: `C:\Users\<user>\blitz\runs\<timestamp>\`)
+
+If `~/.claude/blitz.json` doesn't exist on any subcommand other than `setup`, create a minimal default with empty `backlog: []` so reads don't fail. Don't force setup on first run.
+
+---
+
+## M-ADD — Add a Task to the Backlog
+
+Syntax: `/blitz add <task description>` (optional flag: `--project <path>`)
+
+1. Parse the task description (everything after `add` minus any flags).
+2. Determine project path:
+   - If `--project <path>` provided, use it.
+   - Otherwise, use the current Claude Code working directory.
+3. Append to `backlog[]` in config:
+   ```json
+   { "id": <next>, "task": "<description>", "project": "<absolute path>", "added": "YYYY-MM-DD" }
+   ```
+4. Confirm:
+   ```
+   ✅ Added #[id] to backlog
+      Task:    <description>
+      Project: <project path>
+      Backlog now has [N] item(s).
+   ```
+
+If the task description is empty, ask the user what they want to add.
+
+---
+
+## M-LIST — Show the Backlog
+
+Display every backlog item with its id, task, project (shortened), and date added. Group by project if there are multiple. Show total count at top.
+
+```
+⚡ Blitz backlog — [N] items
+
+  #1  Refactor auth.js for clarity              [myapp]    added 2026-04-29
+  #2  Generate tests for billing module         [myapp]    added 2026-04-30
+  #3  Write API docs for /v2 endpoints          [api-svc]  added 2026-05-01
+
+Run /blitz to blitz through them.
+```
+
+If empty: `Backlog is empty. Add something with /blitz add <task>`.
+
+---
+
+## M-REMOVE — Remove an Item
+
+Syntax: `/blitz remove <id>` (or `rm`).
+
+Remove the item with that id from `backlog[]`. Confirm:
+```
+✅ Removed #[id]: <task>. Backlog now has [N] item(s).
+```
+
+If the id doesn't exist, list the current backlog and ask which to remove.
+
+---
+
+## M-CLEAR — Clear Everything
+
+Confirm first: `Clear all [N] backlog items? (yes/no)`. Only proceed on explicit "yes". Then empty `backlog: []` and confirm.
+
+---
+
+## M-RUN — Run the Backlog (default `/blitz`)
+
+This is the main path. Takes the top items off the backlog, spawns parallel agents, persists output.
+
+### R1 — Check Backlog
+
+If backlog is empty:
+```
+Backlog is empty. Add tasks with /blitz add <task description>.
+
+Or, if you want to run anyway against the current project, type "auto" and I'll
+generate generic improvement tasks for the current directory.
+```
+Wait for input. If the user says "auto", generate 3 generic tasks scoped to the current cwd (security audit, test gen, doc gen — concrete, not vague). Otherwise stop.
+
+### R2 — Optional Urgency Read
+
+Ask in one message:
+> Quick: usage stats? `session: X% / Yh | weekly: X% / Yh` — or press Enter to skip.
+
+If skipped, default to running 3 tasks (medium intensity). If provided, compute:
+```
+session_remaining = 100 - session_used
+weekly_remaining  = 100 - weekly_used
+session_rate = session_remaining / session_hours
+weekly_rate  = weekly_remaining / weekly_hours
+priority = max(session_rate, weekly_rate * 2)
+```
+
+Map score → number of tasks to pull from backlog:
+| Score | Tasks to run |
+|---|---|
+| > 40 | 5–6 |
+| 20–40 | 3–4 |
+| 10–20 | 2–3 |
+| < 10 | 1–2 |
+
+If backlog has fewer items than that, run all of them.
+
+### R3 — Show the Plan
+
+```
+╔══════════════════════════════════════════════════════╗
+║                   ⚡ BLITZ — RUN PLAN                 ║
+╠══════════════════════════════════════════════════════╣
+║  Pulling [N] of [M] backlog items                    ║
+║  Output: ~/blitz/runs/<timestamp>/                   ║
+╚══════════════════════════════════════════════════════╝
+
+  #1  <task>          [project]
+  #2  <task>          [project]
+  ...
+
+Launch [N] parallel agents? (go / adjust / cancel)
+```
+
+If the user says "adjust", let them edit the list (skip a task, swap an id, etc.). On "go", proceed.
+
+### R4 — Prepare Output Directory
+
+Create `~/blitz/runs/<timestamp>/` where timestamp is `YYYY-MM-DD_HHMM-<trigger>` (trigger = `manual`, `weekly`, or `session`).
+
+### R5 — Spawn Agents in Parallel
+
+In **one** Agent tool call block (multiple `<invoke>` blocks in the same message), spawn one agent per task. Each agent prompt must include:
+
+```
+Working directory: <task.project>
+
+Task: <task.task>
+
+Produce thorough, long-form output. Show full work — code diffs, complete
+implementations, line-by-line analysis where appropriate. Do not summarize
+or truncate.
+
+When you finish, write your full output to:
+  <output_dir>/<task_id>-<short-slug>.md
+
+Use the Write tool to create that file. Include a top-level heading with the
+task description, then your full work.
+```
+
+Use `subagent_type: "general-purpose"` for code/writing tasks, `"Explore"` for pure research, `"Plan"` for architecture-only tasks. Default to general-purpose.
+
+### R6 — Write Run Summary
+
+After all agents complete, write `<output_dir>/_summary.md`:
+
+```markdown
+# Blitz run — <timestamp>
+
+Trigger: <manual|weekly|session>
+Tasks: <N> run in parallel
+
+## Results
+- [#1 task title](1-slug.md) — <one-line status from agent>
+- [#2 task title](2-slug.md) — <one-line status>
+...
+
+## Backlog state after run
+Removed: #1, #2, #3
+Remaining: <N> items
+```
+
+Then **remove the completed tasks from the backlog** (so they don't get rerun next time).
+
+### R7 — Final Report
+
+```
+╔══════════════════════════════════════════════════════╗
+║                  ⚡ BLITZ COMPLETE                    ║
+╠══════════════════════════════════════════════════════╣
+║  Tasks done:  [N]                                    ║
+║  Output:      ~/blitz/runs/<timestamp>/              ║
+║  Backlog:     [N] items remaining                    ║
+╚══════════════════════════════════════════════════════╝
+
+Open the summary: <output_dir>/_summary.md
+```
+
+Tell the user the absolute path so they can click it.
+
+---
+
+## M-SETUP — Configuration Wizard
+
+Six short steps. Show progress (`Setup 1/6`).
+
+### S1 — Weekly Reset
+> When does your weekly Claude quota reset? (e.g. "Mondays 9am EST")
+
+Parse to: `weeklyReset.dayOfWeek` (0=Sun…6=Sat), `hour`, `minute`, `timezone`.
+
+### S2 — Session Reset
+> Roughly how often does your session reset, and when did the current one start?
+> (e.g. "every 5 hours, started at 2pm")
+
+Parse to: `sessionResetIntervalHours`, `sessionResetAnchorTime` ("HH:MM").
+
+### S3 — Pre-Reset Lead Time
+> How many minutes before reset should auto-blitz fire? (default: 45)
+
+Store as `preResetMinutes`.
+
+### S4 — Output Directory
+> Where should agent output be written? (default: ~/blitz/runs)
+
+Store as `outputDir`. Create the directory.
+
+### S5 — Seed the Backlog (optional)
+> Want to add some starter tasks now? (one per line, blank line to finish)
+> Or skip and use /blitz add later.
+
+Append any provided tasks to `backlog[]`.
+
+### S6 — Auto-Schedule (opt-in, asked explicitly)
+> Final question: enable auto-fire?
+> I'll create scheduled jobs that run /blitz auto:
+>   - Weekly: <day> at <fire-time> ([preResetMinutes] before reset)
+>   - Session: every [N]h
+>
+> Anytime: /blitz off (disable), /blitz skip (skip next), /blitz on (re-enable)
+>
+> [Y] Enable auto-fire
+> [N] Save config without scheduling
+
+If **N**: save config, exit setup with confirmation.
+
+If **Y**: detect OS, create the scheduled jobs, then **dry-run a test** (see S7).
+
+#### Windows scheduled tasks
+
+**Important:** Direct `cmd /c claude.exe ...` invocation fails silently from Task Scheduler context. Use a PowerShell wrapper script instead — verified working.
+
+First, generate a wrapper script that the scheduled task will invoke:
+
+```powershell
+$claudePath  = (Get-Command claude -ErrorAction SilentlyContinue).Source
+if (-not $claudePath) { throw "claude not found in PATH — install Claude Code first" }
+
+$wrapperPath = "$env:USERPROFILE\.claude\blitz-runner.ps1"
+$wrapperContent = @"
+`$ErrorActionPreference = 'Continue'
+`$logDir = `"`$env:USERPROFILE\blitz`"
+New-Item -ItemType Directory -Force -Path `$logDir | Out-Null
+`$log = `"`$logDir\blitz.log`"
+`"=== Auto-fire `$(Get-Date) ===`" | Out-File `$log -Append -Encoding UTF8
+& '$claudePath' -p '/blitz auto' 2>&1 | Out-File `$log -Append -Encoding UTF8
+`"=== Done `$(Get-Date) ===`" | Out-File `$log -Append -Encoding UTF8
+"@
+Set-Content -Path $wrapperPath -Value $wrapperContent -Encoding UTF8
+
+$action = New-ScheduledTaskAction -Execute "powershell.exe" `
+  -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$wrapperPath`""
+
+# Weekly trigger
+$tw = New-ScheduledTaskTrigger -Weekly -DaysOfWeek <DayName> -At "<HH:MM>"
+Register-ScheduledTask -TaskName "Blitz-Weekly" -Action $action -Trigger $tw -Force
+
+# Session trigger (repeating)
+$ts = New-ScheduledTaskTrigger -Once -At "<anchor>"
+$ts.Repetition = (New-ScheduledTaskTrigger -Once -At (Get-Date) `
+    -RepetitionInterval (New-TimeSpan -Hours <N>) `
+    -RepetitionDuration ([TimeSpan]::FromDays(365))).Repetition
+Register-ScheduledTask -TaskName "Blitz-Session" -Action $action -Trigger $ts -Force
+```
+
+#### Mac/Linux crontab
+```bash
+(crontab -l 2>/dev/null | grep -v '# Blitz'; \
+  echo "# Blitz weekly"; echo "<cron-expr> claude -p '/blitz auto'"; \
+  echo "# Blitz session"; echo "<cron-expr> claude -p '/blitz auto'") | crontab -
+```
+
+`autoScheduleEnabled: true` in config.
+
+### S7 — Verify Auth (important)
+After creating the scheduled jobs, **immediately run a test**:
+
+```
+Testing: I'll trigger /blitz auto right now to confirm authentication works
+in a non-interactive context. This will run with whatever's in your backlog
+(or skip if empty).
+```
+
+On Windows: `Start-ScheduledTask -TaskName "Blitz-Session"` then check status.
+On Mac/Linux: directly run `claude -p "/blitz auto"` in a subshell.
+
+If it fails (auth not picked up in non-interactive context), tell the user clearly:
+```
+⚠ Auto-fire test failed: <error>
+
+The scheduled jobs were created, but `claude` couldn't authenticate when run
+non-interactively. Auto-mode won't work until this is fixed.
+
+Workarounds:
+  1. Manually run /blitz before each reset (still useful with the backlog)
+  2. Disable auto-schedule: /blitz off
+```
+
+If it works, confirm:
+```
+✅ Auto-fire verified.
+   Weekly:  fires <day> at <fire-time>
+   Session: fires every <N>h
+   Output:  <outputDir>
+```
+
+---
+
+## M-AUTO — Unattended Scheduled Run
+
+Triggered by the scheduled job. **No interactive prompts.**
+
+1. Load `~/.claude/blitz.json`. If missing or `autoScheduleEnabled: false`, exit silently.
+2. If `skipNextFire: true`, set it back to false, save config, exit with `⚡ Auto-fire skipped (per /blitz skip)`.
+3. Determine which reset triggered this fire (compare current time to `weeklyReset` and session intervals → pick the closer one).
+4. Pull top 3–5 items from `backlog[]` (5 if weekly trigger, 3 if session).
+5. If backlog is empty: log to `~/blitz/blitz.log` ("No tasks in backlog, skipping auto-fire") and exit. Don't generate filler.
+6. Run the same R4–R7 flow as M-RUN, but skip the "Launch?" prompt — just go.
+7. Output `<output_dir>/_summary.md` and append a one-liner to `~/blitz/blitz.log`.
+
+---
+
+## M-OFF / M-ON / M-SKIP — Schedule Controls
+
+**`/blitz off`** — set `autoScheduleEnabled: false` in config. Optionally also disable the OS jobs:
+- Windows: `Disable-ScheduledTask -TaskName "Blitz-Weekly"` (and Session)
+- Mac/Linux: comment out the `# Blitz` lines in crontab
+
+Confirm: `🛑 Auto-fire disabled. Run /blitz on to re-enable, or /blitz manually anytime.`
+
+**`/blitz on`** — reverse of off. Re-enable jobs and set `autoScheduleEnabled: true`.
+
+**`/blitz skip`** — set `skipNextFire: true` in config. The next M-AUTO invocation will exit and reset the flag.
+Confirm: `⏭ Next scheduled fire will be skipped. Subsequent fires will run normally.`
+
+---
+
+## Config Schema
+
+```json
+{
+  "version": 1,
+  "weeklyReset": {
+    "dayOfWeek": 1,
+    "hour": 9,
+    "minute": 0,
+    "timezone": "America/New_York"
+  },
+  "sessionResetIntervalHours": 5,
+  "sessionResetAnchorTime": "14:00",
+  "preResetMinutes": 45,
+  "outputDir": "~/blitz/runs",
+  "autoScheduleEnabled": true,
+  "skipNextFire": false,
+  "backlog": [
+    {
+      "id": 1,
+      "task": "Refactor auth.js for clarity",
+      "project": "C:\\Users\\Adam\\repos\\myapp",
+      "added": "2026-05-01"
+    }
+  ],
+  "nextId": 2
+}
+```
+
+When adding items, increment `nextId` and use it as the new item's `id`.
+
+---
+
+## Principles
+
+- **Real tasks only.** Backlog holds work the user actually wants done — never generated filler.
+- **Persist everything.** Every agent writes to a file. Auto-fires that don't write artifacts are useless.
+- **Parallel = throughput, not multiplier.** It finishes more tasks in the same wall-clock time. Don't oversell it.
+- **Auto-fire is opt-in and reversible.** Always ask, always provide off/skip/on.
+- **Verify auth on setup.** A scheduled job that silently fails auth is the worst possible outcome — test it during setup.
+- **Empty backlog = no run.** Auto mode never invents work. If there's nothing queued, log and exit.

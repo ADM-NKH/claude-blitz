@@ -1,0 +1,29 @@
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs / temp
+*.log
+*.tmp
+.cache/
+
+# Local environment
+.env
+.env.local
+
+# Claude Code local session state — never commit
+.claude/
+!.claude/skills/
+
+# Build artifacts (none expected, but just in case)
+node_modules/
+dist/
+build/
