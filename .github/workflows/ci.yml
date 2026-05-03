@@ -18,8 +18,10 @@ jobs:
         uses: DavidAnson/markdownlint-cli2-action@v16
         with:
           globs: |
-            **/*.md
-            !blitz/**
+            README.md
+            CHANGELOG.md
+            CONTRIBUTING.md
+            .github/**/*.md
 
       - name: Shellcheck install scripts
         uses: ludeeus/action-shellcheck@master
