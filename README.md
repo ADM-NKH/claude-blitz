@@ -49,16 +49,19 @@ Auto-detects your harness (Claude Code, Cursor, Codex, Gemini, …) and writes t
 <summary>Other install options</summary>
 
 **Mac / Linux:**
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ADM-NKH/claude-blitz/main/install.sh | bash
 ```
 
 **Windows (PowerShell):**
+
 ```powershell
 irm https://raw.githubusercontent.com/ADM-NKH/claude-blitz/main/install.ps1 | iex
 ```
 
 **Manual (any OS):**
+
 ```bash
 git clone https://github.com/ADM-NKH/claude-blitz.git ~/.claude/skills/blitz
 ```
@@ -66,7 +69,8 @@ git clone https://github.com/ADM-NKH/claude-blitz.git ~/.claude/skills/blitz
 </details>
 
 Then, in your AI harness:
-```
+
+```text
 /blitz setup                              # one-time config
 /blitz add Refactor auth.js               # queue work
 /blitz add Generate tests for billing
@@ -158,6 +162,7 @@ Every run creates a timestamped folder under `~/blitz/runs/`:
 ## Uninstall
 
 **Recommended:**
+
 ```bash
 npx skills remove blitz
 ```
@@ -166,11 +171,13 @@ npx skills remove blitz
 <summary>Other uninstall options</summary>
 
 **Mac / Linux:**
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ADM-NKH/claude-blitz/main/uninstall.sh | bash
 ```
 
 **Windows (PowerShell):**
+
 ```powershell
 irm https://raw.githubusercontent.com/ADM-NKH/claude-blitz/main/uninstall.ps1 | iex
 ```
@@ -196,6 +203,7 @@ The setup wizard runs an immediate auth test and tells you clearly if it doesn't
 Yes — it lives at `~/.claude/blitz.json`. Just keep the schema valid.
 
 **Where does Blitz keep its data?**
+
 - Config + backlog: `~/.claude/blitz.json`
 - Run output: `~/blitz/runs/<timestamp>/`
 - Auto-fire log: `~/blitz/blitz.log`

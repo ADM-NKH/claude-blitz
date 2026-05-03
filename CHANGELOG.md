@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0] — 2026-05-03
 
 ### Added
+
 - Initial public release.
 - Compatible with `npx skills add ADM-NKH/claude-blitz` via [vercel-labs/skills](https://github.com/vercel-labs/skills) — auto-detects the AI harness.
 - `/blitz` — manual backlog run with parallel agent execution.
