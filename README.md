@@ -2,11 +2,11 @@
 
 # ⚡ Blitz
 
-**A pre-reset backlog runner for Claude Code.**
-Queue real tasks during the week. Blitz through them in parallel before your quota resets.
+**Feed it goals; it ships increments while you're away.**
+A continuously-firing background work runner for Claude Code. Queue tasks, track long-term goals, and enable per-project audit rotations.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.1.0-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.2.0-brightgreen.svg)](CHANGELOG.md)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](#install)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-skill-orange.svg)](https://claude.ai/code)
 
@@ -116,7 +116,7 @@ Open the summary: ~/blitz/runs/2026-05-03_0830-manual/_summary.md
 ## Commands
 
 | Command | Description |
-|---|---|
+| --- | --- |
 | `/blitz` | Run the backlog now — pulls top N, spawns parallel agents, persists output |
 | `/blitz add <task>` | Add to backlog (uses cwd as project; override with `--project <path>`) |
 | `/blitz list` | Show the backlog |
@@ -127,18 +127,28 @@ Open the summary: ~/blitz/runs/2026-05-03_0830-manual/_summary.md
 | `/blitz off` / `on` | Disable / re-enable auto-fire |
 | `/blitz skip` | Skip the next scheduled fire |
 
+### Goals (long-term)
+
+- `/blitz goal add "Ship pluginproof MVP"` — register a goal in the current project
+- `/blitz goal list` — show goals with branch and increment count
+- `/blitz goal review <id>` — show the goal branch's diff vs main and plan status
+- `/blitz goal log <id>` — show what blitz has shipped for this goal so far
+- `/blitz goal autopush <id> on|off` — opt the goal into pushing increments to origin
+
+### Audits (per-project maintenance)
+
+- `/blitz audit enable <project>` — add a project to the audit rotation
+- `/blitz audit list` — show enabled audits and last-swept dates
+- `/blitz audit run <project>` — run the next audit in rotation right now
+- `/blitz audit disable <project>` — remove an audit
+
 ---
 
-## How auto-fire works
+## How it fires
 
-`/blitz setup` asks if you want scheduled auto-fires. If you say yes:
+Blitz runs on a hybrid cadence + per-project idle-gate model. A single OS scheduled job (`Blitz-Cadence`) wakes every `cadenceHours` (default 3h) and checks each backlog item. Before touching a project, blitz inspects its git state: if you've committed within the last `idleMinutes` (default 30) or the working tree is dirty, that item is deferred to the next fire. Optional blackout windows let you suppress firing during specific hours (e.g. weekday work hours). Each fire pulls a tier of items — goals first, then tasks, then audits — capped per `firing.caps`. Goals decompose into a durable `plan.md`; the first fire writes the plan, subsequent fires implement one increment each on a long-lived `blitz/goal-<id>` branch. Audits produce read-only reports and auto-promote one new finding per fire to the backlog.
 
-- **Windows:** Registers Task Scheduler jobs that invoke a PowerShell wrapper which runs `claude -p "/blitz auto"`.
-- **Mac / Linux:** Adds entries to your crontab.
-
-The job fires ~45 minutes before each reset (configurable). Auto mode reads your backlog, runs the top items in parallel, and writes the output to disk.
-
-> **Empty backlog → no run.** Auto mode never invents work.
+> **Empty backlog + nothing enabled → silent exit.** Auto mode never invents work.
 
 ---
 
