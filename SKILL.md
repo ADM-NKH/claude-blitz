@@ -713,13 +713,13 @@ DIRTY=$(git status --porcelain | head -1)
 
 ## M-OFF / M-ON / M-SKIP — Schedule Controls
 
-**`/blitz off`** — set `autoScheduleEnabled: false` in config. Optionally also disable the OS jobs:
-- Windows: `Disable-ScheduledTask -TaskName "Blitz-Weekly"` (and Session)
-- Mac/Linux: comment out the `# Blitz` lines in crontab
+**`/blitz off`** — set `autoScheduleEnabled: false` in config. Also disable the OS job:
+- Windows: `Disable-ScheduledTask -TaskName "Blitz-Cadence"` (also handle legacy v0.1 tasks: `Blitz-Weekly`, `Blitz-Session`)
+- Mac/Linux: comment out the `# Blitz cadence` line in crontab
 
 Confirm: `🛑 Auto-fire disabled. Run /blitz on to re-enable, or /blitz manually anytime.`
 
-**`/blitz on`** — reverse of off. Re-enable jobs and set `autoScheduleEnabled: true`.
+**`/blitz on`** — reverse of off. Re-enable the OS job and set `autoScheduleEnabled: true`.
 
 **`/blitz skip`** — set `skipNextFire: true` in config. The next M-AUTO invocation will exit and reset the flag.
 Confirm: `⏭ Next scheduled fire will be skipped. Subsequent fires will run normally.`
