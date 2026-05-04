@@ -659,15 +659,42 @@ If it works, confirm:
 
 ## M-AUTO — Unattended Scheduled Run
 
-Triggered by the scheduled job. **No interactive prompts.**
+Triggered by the cadence-based scheduled job. **No interactive prompts.**
 
-1. Load `~/.claude/blitz.json`. If missing or `autoScheduleEnabled: false`, exit silently.
-2. If `skipNextFire: true`, set it back to false, save config, exit with `⚡ Auto-fire skipped (per /blitz skip)`.
-3. Determine which reset triggered this fire (compare current time to `weeklyReset` and session intervals → pick the closer one).
-4. Pull top 3–5 items from `backlog[]` (5 if weekly trigger, 3 if session).
-5. If backlog is empty: log to `~/blitz/blitz.log` ("No tasks in backlog, skipping auto-fire") and exit. Don't generate filler.
-6. Run the same R4–R7 flow as M-RUN, but skip the "Launch?" prompt — just go.
-7. Output `<output_dir>/_summary.md` and append a one-liner to `~/blitz/blitz.log`.
+1. Load `~/.claude/blitz.json`. If missing or `autoScheduleEnabled` is false, exit silently.
+2. If `skipNextFire` is true, set it to false, save, log `⚡ Auto-fire skipped (per /blitz skip)` to `~/blitz/blitz.log`, exit.
+3. Run migration check (see "Migration v1 → v2"). If migrating, save and continue.
+4. **Blackout window check**: get current weekday + time-of-day in the user's timezone. For each window in `firing.blackoutWindows`, if today's weekday is listed and current time falls in `[start, end)`, log `⚡ Blackout active`, exit.
+5. **Pull items by tier**, respecting `firing.caps`:
+   - First, walk `backlog[]` looking for `kind: "goal"` items. Take up to `caps.goalsPerFire` (default 1), preferring the goal with the oldest `lastTouched`.
+   - Then walk for `kind: "task"` items. Take up to `caps.tasksPerFire` (default 3), in order added.
+   - Then walk for `kind: "audit"` items. Take up to `caps.auditsPerFire` (default 1), preferring the audit with the oldest `lastSwept` (`null` sorts oldest).
+6. **Per-item idle gate**: for each pulled item, run the gate check on its `project`:
+
+```bash
+# In the item's project directory:
+RECENT_COMMIT=$(git log --since="<idleMinutes> minutes ago" --oneline | head -1)
+DIRTY=$(git status --porcelain | head -1)
+```
+
+   - If `RECENT_COMMIT` is non-empty OR `DIRTY` is non-empty, **skip this item**. Leave it in the backlog; it will be eligible on the next fire.
+   - If the project is not a git repo, the gate is bypassed (treated as idle).
+7. If every pulled item was skipped: log `⚡ All targets active, deferring (next fire in <cadenceHours>h)` to `~/blitz/blitz.log`. Exit clean. Backlog unchanged.
+8. Otherwise, prepare the output dir: `~/blitz/runs/<YYYY-MM-DD_HHMM>-cadence/`.
+9. **Spawn agents in one parallel block**, one per non-skipped item, routed by kind:
+   - `kind: "task"` → existing R5 prompt template.
+   - `kind: "goal"` → Goal Fire Flow (planning or increment, based on plan.md).
+   - `kind: "audit"` → Audit Fire Flow.
+10. After all agents finish, run kind-specific post-processing:
+    - For tasks: remove the task from `backlog[]` (current v0.1 behavior).
+    - For goals: update `lastTouched` and `incrementCount`. Goal item stays in `backlog[]`.
+    - For audits: parse the report, auto-promote one finding per Audit Fire Flow step 3. Audit item stays in `backlog[]`.
+11. Write `<output_dir>/_summary.md` listing each item's result file with kind tag and one-line status.
+12. Append a one-liner to `~/blitz/blitz.log`:
+
+```text
+[YYYY-MM-DD HH:MM] cadence-fire: ran <K> items (goals=<g>, tasks=<t>, audits=<a>); skipped <S>; output=<output_dir>
+```
 
 ---
 
