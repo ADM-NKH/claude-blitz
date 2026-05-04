@@ -1,6 +1,6 @@
 ---
 name: blitz
-description: A pre-reset backlog runner for Claude Max subscribers. Queue real tasks during the week ("/blitz add ..."), then blitz through them in parallel — manually with /blitz, or automatically before each session/weekly reset. Persists every agent's output to ~/blitz/runs/<timestamp>/ so nothing is lost. Includes commands to add, list, remove, run, configure schedules, and disable/skip auto-fires.
+description: A continuously-firing background work runner for Claude Code. Queue real tasks ("/blitz add"), track long-term goals ("/blitz goal add"), and enable per-project audit rotations ("/blitz audit enable"). Blitz fires on a configurable cadence with a per-project idle gate, decomposes goals into increments on a long-lived branch, and persists every fire's output to ~/blitz/runs/<timestamp>/. Includes commands to manage the backlog, goals, audits, schedules, and kill switches (off/on/skip).
 ---
 
 # ⚡ Blitz — Pre-Reset Backlog Runner
@@ -21,6 +21,8 @@ Read the first word of arguments after `/blitz`:
 | `list`, `ls` | Show the backlog (M-LIST) |
 | `remove`, `rm` | Remove a backlog item by number (M-REMOVE) |
 | `clear` | Clear all backlog (with confirmation) (M-CLEAR) |
+| `goal add` / `goal list` / `goal review` / `goal log` / `goal remove` / `goal autopush` | Goal lifecycle (M-GOAL) |
+| `audit enable` / `audit disable` / `audit list` / `audit run` | Audit lifecycle (M-AUDIT) |
 | `setup` | Run the configuration wizard (M-SETUP) |
 | `auto` | Unattended scheduled run (M-AUTO) |
 | `off` | Disable auto-schedule firing (M-OFF) |
