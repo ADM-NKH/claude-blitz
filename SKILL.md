@@ -519,8 +519,6 @@ Removed: #1, #2, #3
 Remaining: <N> items
 ```
 
-Then **remove the completed tasks from the backlog** (so they don't get rerun next time).
-
 **Kind-aware backlog updates** (after summary is written):
 
 - For each completed `kind: "task"` item: remove from `backlog[]` (v0.1 behavior).
@@ -548,7 +546,7 @@ Tell the user the absolute path so they can click it.
 
 ## M-SETUP — Configuration Wizard
 
-Six steps. Show progress (`Setup 1/6`).
+Seven steps. Show progress (`Setup 1/7`).
 
 ### S1 — Weekly reset
 
