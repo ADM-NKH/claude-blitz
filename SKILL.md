@@ -3,9 +3,9 @@ name: blitz
 description: A continuously-firing background work runner for Claude Code. Queue real tasks ("/blitz add"), track long-term goals ("/blitz goal add"), and enable per-project audit rotations ("/blitz audit enable"). Blitz fires on a configurable cadence with a per-project idle gate, decomposes goals into increments on a long-lived branch, and persists every fire's output to ~/blitz/runs/<timestamp>/. Includes commands to manage the backlog, goals, audits, schedules, and kill switches (off/on/skip).
 ---
 
-# ⚡ Blitz — Pre-Reset Backlog Runner
+# ⚡ Blitz — Background Work Runner
 
-A Claude Code skill for people on Claude Max plans. Queue tasks you've been meaning to get to during the week. Blitz runs them through parallel agents — on demand, or automatically right before your quota resets — and writes every agent's output to disk so you wake up to actual artifacts, not a closed terminal.
+A Claude Code skill for people on Claude Max plans. Queue tasks, declare long-term goals, and enable per-project audits. Blitz fires on a configurable cadence with a per-project idle gate, runs work through parallel agents, and writes every agent's output to disk so you wake up to actual artifacts, not a closed terminal.
 
 **Parallelism is for throughput, not quota multiplication.** Five agents finish five tasks in the time of one — that's the win.
 

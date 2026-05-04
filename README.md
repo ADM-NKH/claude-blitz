@@ -204,7 +204,7 @@ The uninstaller removes the skill and any scheduled jobs, but **preserves** your
 No. Your quota is fixed. Blitz just helps you *use* what you have on real work instead of letting it expire idle.
 
 **Will Anthropic's fair-use policy flag me?**
-Blitz only runs work you queue yourself. Empty backlog, no run. There's no token-pumping or filler generation. You're using your subscription for what it's for.
+Blitz only runs work you queue yourself. Empty backlog, no run. There's no token-pumping or filler generation. You're using your plan for what it's for.
 
 **What if `claude -p` doesn't work in a Task Scheduler context on my Windows machine?**
 The setup wizard runs an immediate auth test and tells you clearly if it doesn't work. The manual `/blitz` mode keeps working either way.
