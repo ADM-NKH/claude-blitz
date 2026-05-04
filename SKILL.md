@@ -533,40 +533,45 @@ Tell the user the absolute path so they can click it.
 
 ## M-SETUP — Configuration Wizard
 
-Six short steps. Show progress (`Setup 1/6`).
+Six steps. Show progress (`Setup 1/6`).
 
-### S1 — Weekly Reset
+### S1 — Weekly reset
+
 > When does your weekly Claude quota reset? (e.g. "Mondays 9am EST")
 
-Parse to: `weeklyReset.dayOfWeek` (0=Sun…6=Sat), `hour`, `minute`, `timezone`.
+Parse to: `weeklyReset.dayOfWeek` (0=Sun…6=Sat), `hour`, `minute`, `timezone`. (This is informational for the user; the cadence model does not anchor to it.)
 
-### S2 — Session Reset
-> Roughly how often does your session reset, and when did the current one start?
-> (e.g. "every 5 hours, started at 2pm")
+### S2 — Cadence
 
-Parse to: `sessionResetIntervalHours`, `sessionResetAnchorTime` ("HH:MM").
+> How often should blitz check for work? (default: every 3h)
+> Lower values catch more idle windows but burn more setup overhead.
 
-### S3 — Pre-Reset Lead Time
-> How many minutes before reset should auto-blitz fire? (default: 45)
+Parse to integer hours, store as `firing.cadenceHours`.
 
-Store as `preResetMinutes`.
+### S3 — Idle threshold
 
-### S4 — Output Directory
+> Skip a fire if you've committed in the project within the last X minutes.
+> (default: 30)
+
+Store as `firing.idleMinutes`.
+
+### S4 — Blackout windows (optional)
+
+> Want to suppress firing during specific hours? (e.g. "weekdays 9am–6pm")
+> Press Enter to skip.
+
+Parse user input into one or more blackout windows. Each window has `days` (array of `mon/tue/wed/thu/fri/sat/sun`) and `start`/`end` (`HH:MM`). Append to `firing.blackoutWindows`.
+
+### S5 — Output directory
+
 > Where should agent output be written? (default: ~/blitz/runs)
 
-Store as `outputDir`. Create the directory.
+Store as `outputDir`. Set `goalsDir` to a sibling: `<parent>/goals` (default: `~/blitz/goals`). Create both directories.
 
-### S5 — Seed the Backlog (optional)
-> Want to add some starter tasks now? (one per line, blank line to finish)
-> Or skip and use /blitz add later.
+### S6 — Auto-schedule (opt-in, asked explicitly)
 
-Append any provided tasks to `backlog[]`.
-
-### S6 — Auto-Schedule (opt-in, asked explicitly)
 > Final question: enable auto-fire?
-> I'll create scheduled jobs that run /blitz auto:
->   - Weekly: <day> at <fire-time> ([preResetMinutes] before reset)
->   - Session: every [N]h
+> I'll create one cadence-based scheduled job that runs /blitz auto every <cadenceHours>h.
 >
 > Anytime: /blitz off (disable), /blitz skip (skip next), /blitz on (re-enable)
 >
@@ -575,16 +580,14 @@ Append any provided tasks to `backlog[]`.
 
 If **N**: save config, exit setup with confirmation.
 
-If **Y**: detect OS, create the scheduled jobs, then **dry-run a test** (see S7).
+If **Y**: detect OS, create the cadence-based scheduled job, then run S7.
 
-#### Windows scheduled tasks
+#### Windows scheduled task (cadence)
 
-**Important:** Direct `cmd /c claude.exe ...` invocation fails silently from Task Scheduler context. Use a PowerShell wrapper script instead — verified working.
-
-First, generate a wrapper script that the scheduled task will invoke:
+Use a single PowerShell wrapper script. Direct `cmd /c claude.exe ...` invocation fails silently from Task Scheduler; a wrapper is required.
 
 ```powershell
-$claudePath  = (Get-Command claude -ErrorAction SilentlyContinue).Source
+$claudePath = (Get-Command claude -ErrorAction SilentlyContinue).Source
 if (-not $claudePath) { throw "claude not found in PATH — install Claude Code first" }
 
 $wrapperPath = "$env:USERPROFILE\.claude\blitz-runner.ps1"
@@ -593,7 +596,7 @@ $wrapperContent = @"
 `$logDir = `"`$env:USERPROFILE\blitz`"
 New-Item -ItemType Directory -Force -Path `$logDir | Out-Null
 `$log = `"`$logDir\blitz.log`"
-`"=== Auto-fire `$(Get-Date) ===`" | Out-File `$log -Append -Encoding UTF8
+`"=== Cadence fire `$(Get-Date) ===`" | Out-File `$log -Append -Encoding UTF8
 & '$claudePath' -p '/blitz auto' 2>&1 | Out-File `$log -Append -Encoding UTF8
 `"=== Done `$(Get-Date) ===`" | Out-File `$log -Append -Encoding UTF8
 "@
@@ -602,44 +605,52 @@ Set-Content -Path $wrapperPath -Value $wrapperContent -Encoding UTF8
 $action = New-ScheduledTaskAction -Execute "powershell.exe" `
   -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$wrapperPath`""
 
-# Weekly trigger
-$tw = New-ScheduledTaskTrigger -Weekly -DaysOfWeek <DayName> -At "<HH:MM>"
-Register-ScheduledTask -TaskName "Blitz-Weekly" -Action $action -Trigger $tw -Force
+# Cadence trigger: every <cadenceHours> hours, starting now
+$startAt = (Get-Date).AddMinutes(2)  # let setup finish first
+$trigger = New-ScheduledTaskTrigger -Once -At $startAt `
+  -RepetitionInterval (New-TimeSpan -Hours <cadenceHours>) `
+  -RepetitionDuration ([TimeSpan]::FromDays(365))
 
-# Session trigger (repeating)
-$ts = New-ScheduledTaskTrigger -Once -At "<anchor>"
-$ts.Repetition = (New-ScheduledTaskTrigger -Once -At (Get-Date) `
-    -RepetitionInterval (New-TimeSpan -Hours <N>) `
-    -RepetitionDuration ([TimeSpan]::FromDays(365))).Repetition
-Register-ScheduledTask -TaskName "Blitz-Session" -Action $action -Trigger $ts -Force
+# Remove any v0.1 tasks first
+Unregister-ScheduledTask -TaskName "Blitz-Weekly" -Confirm:$false -ErrorAction SilentlyContinue
+Unregister-ScheduledTask -TaskName "Blitz-Session" -Confirm:$false -ErrorAction SilentlyContinue
+
+Register-ScheduledTask -TaskName "Blitz-Cadence" -Action $action -Trigger $trigger -Force
 ```
 
 #### Mac/Linux crontab
+
 ```bash
+# Convert cadenceHours to a cron expression: every N hours, on the hour.
+# For cadenceHours=3, the expression is: 0 */3 * * *
+
 (crontab -l 2>/dev/null | grep -v '# Blitz'; \
-  echo "# Blitz weekly"; echo "<cron-expr> claude -p '/blitz auto'"; \
-  echo "# Blitz session"; echo "<cron-expr> claude -p '/blitz auto'") | crontab -
+  echo "# Blitz cadence"; \
+  echo "<cron-expression> claude -p '/blitz auto'") | crontab -
 ```
 
 `autoScheduleEnabled: true` in config.
 
-### S7 — Verify Auth (important)
-After creating the scheduled jobs, **immediately run a test**:
+### S7 — Verify auth
 
-```
+After creating the scheduled job, **immediately run a test**:
+
+```text
 Testing: I'll trigger /blitz auto right now to confirm authentication works
-in a non-interactive context. This will run with whatever's in your backlog
-(or skip if empty).
+in a non-interactive context. This will run with whatever's queued, or
+defer cleanly if all gates skip.
 ```
 
-On Windows: `Start-ScheduledTask -TaskName "Blitz-Session"` then check status.
+On Windows: `Start-ScheduledTask -TaskName "Blitz-Cadence"` then check `Get-ScheduledTaskInfo -TaskName "Blitz-Cadence"` for last-run result.
+
 On Mac/Linux: directly run `claude -p "/blitz auto"` in a subshell.
 
 If it fails (auth not picked up in non-interactive context), tell the user clearly:
-```
+
+```text
 ⚠ Auto-fire test failed: <error>
 
-The scheduled jobs were created, but `claude` couldn't authenticate when run
+The scheduled job was created, but `claude` couldn't authenticate when run
 non-interactively. Auto-mode won't work until this is fixed.
 
 Workarounds:
@@ -648,11 +659,13 @@ Workarounds:
 ```
 
 If it works, confirm:
-```
+
+```text
 ✅ Auto-fire verified.
-   Weekly:  fires <day> at <fire-time>
-   Session: fires every <N>h
-   Output:  <outputDir>
+   Cadence:  every <cadenceHours>h
+   Idle gate: <idleMinutes>m
+   Blackouts: <count> windows configured
+   Output:   <outputDir>
 ```
 
 ---
