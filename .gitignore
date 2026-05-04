@@ -27,3 +27,6 @@ desktop.ini
 node_modules/
 dist/
 build/
+
+# MCP / tool state
+.playwright-mcp/
