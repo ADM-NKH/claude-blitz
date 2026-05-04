@@ -13,8 +13,8 @@ Only the latest released version of Blitz is supported. Older versions do not re
 
 If you discover a security issue in this repo, please **do not open a public issue**. Report it privately via one of these channels:
 
-- **GitHub private vulnerability report**: https://github.com/ADM-NKH/claude-blitz/security/advisories/new
-- **Email**: adamnikh@gmail.com (subject: `claude-blitz security`)
+- **GitHub private vulnerability report**: <https://github.com/ADM-NKH/claude-blitz/security/advisories/new>
+- **Email**: <adamnikh@gmail.com> (subject: `claude-blitz security`)
 
 Please include:
 
