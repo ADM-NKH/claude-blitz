@@ -1,0 +1,10 @@
+# Default reviewer for all paths.
+* @ADM-NKH
+
+# SKILL.md is the artifact — explicit ownership for clarity.
+/SKILL.md @ADM-NKH
+
+# CI / governance / security configs.
+/.github/ @ADM-NKH
+/SECURITY.md @ADM-NKH
+/CODEOWNERS @ADM-NKH

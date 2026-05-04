@@ -6,25 +6,31 @@ on:
   pull_request:
     branches: [main]
 
+# Least-privilege token. Read-only is enough for lint + shellcheck.
+permissions:
+  contents: read
+
 jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Lint markdown
-        uses: DavidAnson/markdownlint-cli2-action@v16
+        uses: DavidAnson/markdownlint-cli2-action@b4c9feab76d8025d1e83c653fa3990936df0e6c8 # v16
         with:
           globs: |
             README.md
             CHANGELOG.md
             CONTRIBUTING.md
+            CLAUDE.md
+            SECURITY.md
             .github/**/*.md
 
       - name: Shellcheck install scripts
-        uses: ludeeus/action-shellcheck@master
+        uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # v2.0.0
         with:
           scandir: ./
           additional_files: install.sh uninstall.sh
