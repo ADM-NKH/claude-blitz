@@ -375,36 +375,86 @@ Confirm: `⏭ Next scheduled fire will be skipped. Subsequent fires will run nor
 
 ---
 
-## Config Schema
+## Config Schema (v2)
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "weeklyReset": {
     "dayOfWeek": 1,
     "hour": 9,
     "minute": 0,
     "timezone": "America/New_York"
   },
-  "sessionResetIntervalHours": 5,
-  "sessionResetAnchorTime": "14:00",
-  "preResetMinutes": 45,
+  "firing": {
+    "mode": "hybrid",
+    "cadenceHours": 3,
+    "idleMinutes": 30,
+    "blackoutWindows": [
+      { "days": ["mon","tue","wed","thu","fri"], "start": "09:00", "end": "18:00" }
+    ],
+    "caps": { "goalsPerFire": 1, "tasksPerFire": 3, "auditsPerFire": 1 }
+  },
   "outputDir": "~/blitz/runs",
+  "goalsDir": "~/blitz/goals",
   "autoScheduleEnabled": true,
   "skipNextFire": false,
   "backlog": [
     {
       "id": 1,
+      "kind": "task",
       "task": "Refactor auth.js for clarity",
       "project": "C:\\Users\\Adam\\repos\\myapp",
       "added": "2026-05-01"
+    },
+    {
+      "id": 2,
+      "kind": "goal",
+      "task": "Ship pluginproof MVP",
+      "project": "C:\\Users\\Adam\\MCP\\pluginproof",
+      "added": "2026-05-04",
+      "branch": "blitz/goal-2",
+      "autoPush": false,
+      "lastTouched": "2026-05-04T14:00:00Z",
+      "incrementCount": 0
+    },
+    {
+      "id": 3,
+      "kind": "audit",
+      "project": "C:\\Adam\\claude_skills",
+      "rotation": ["security","deadcode","tests","deps","docs","todos"],
+      "rotationIdx": 0,
+      "lastSwept": null,
+      "promotedFindings": []
     }
   ],
-  "nextId": 2
+  "nextId": 4
 }
 ```
 
-When adding items, increment `nextId` and use it as the new item's `id`.
+Every backlog item has a `kind` field. Three kinds:
+- `"task"` — a unit of work to run-and-remove (v0.1 behavior)
+- `"goal"` — a long-term objective that produces increments via a durable plan
+- `"audit"` — a per-project maintenance rotation that produces read-only reports
+
+When adding any new item, increment `nextId` and use it as the new item's `id`.
+
+## Migration v1 → v2
+
+When the skill loads `~/.claude/blitz.json`, check `version`:
+
+1. If `version` is `2`, do nothing.
+2. If `version` is missing or `1`, run the migration:
+   - Add `"kind": "task"` to every existing item in `backlog[]`.
+   - Add a `firing` block with defaults: `{ "mode": "hybrid", "cadenceHours": 3, "idleMinutes": 30, "blackoutWindows": [], "caps": { "goalsPerFire": 1, "tasksPerFire": 3, "auditsPerFire": 1 } }`.
+   - Drop `preResetMinutes` if present (functionality removed in v0.2).
+   - Drop `sessionResetIntervalHours` and `sessionResetAnchorTime` if present (cadence model replaces session-anchored triggers).
+   - Add `"goalsDir": "~/blitz/goals"` if missing.
+   - Set `"version": 2`.
+   - Save the file.
+3. If on Windows and `autoScheduleEnabled` is `true`, replace existing `Blitz-Weekly` and `Blitz-Session` scheduled tasks with a single `Blitz-Cadence` task triggered every `cadenceHours`. On Mac/Linux, replace cron entries similarly.
+
+Migration is idempotent — re-running it on a v2 config is a no-op.
 
 ---
 
