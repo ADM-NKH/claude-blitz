@@ -826,9 +826,13 @@ Migration is idempotent — re-running it on a v2 config is a no-op.
 
 ## Principles
 
-- **Real tasks only.** Backlog holds work the user actually wants done — never generated filler.
-- **Persist everything.** Every agent writes to a file. Auto-fires that don't write artifacts are useless.
-- **Parallel = throughput, not multiplier.** It finishes more tasks in the same wall-clock time. Don't oversell it.
+- **Real work only.** Backlog holds work the user defines: tasks queued explicitly, goals declared explicitly, audits enabled per-project. Never invented filler.
+- **Empty backlog + nothing enabled = silent exit.** Auto mode never invents work to fill quota.
+- **Persist everything.** Every fire writes artifacts. A fire that produces no file is a bug.
+- **Parallelism = throughput, not multiplier.** It finishes more tasks in the same wall-clock time. Do not oversell it.
 - **Auto-fire is opt-in and reversible.** Always ask, always provide off/skip/on.
-- **Verify auth on setup.** A scheduled job that silently fails auth is the worst possible outcome — test it during setup.
-- **Empty backlog = no run.** Auto mode never invents work. If there's nothing queued, log and exit.
+- **Goals decompose at run-time, not at queue-time.** The first fire writes a plan; subsequent fires execute one plan item each. Plans are durable on disk, not in config.
+- **Code modifications stay on `blitz/*` branches.** Never main, never push without explicit per-goal `autoPush`.
+- **Audits never touch project files.** Reports go to the output dir. Findings get auto-promoted to the backlog as tasks; the user reviews and discards.
+- **Per-project idle gate prevents collisions.** If you committed in a project recently or have a dirty tree, blitz defers that item.
+- **Verify auth on setup.** A scheduled job that silently fails auth is the worst outcome — test it during S7.
