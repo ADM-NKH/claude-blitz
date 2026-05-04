@@ -98,6 +98,97 @@ Confirm first: `Clear all [N] backlog items? (yes/no)`. Only proceed on explicit
 
 ---
 
+## M-GOAL — Goal Lifecycle
+
+Long-term goals are user-defined objectives that compound over many fires. Each goal has a durable plan (`~/blitz/goals/<id>/plan.md`) and a long-lived branch (`blitz/goal-<id>`). Goal items live in `backlog[]` with `kind: "goal"`.
+
+### M-GOAL-ADD — Add a goal
+
+Syntax: `/blitz goal add <description>` (optional flag: `--project <path>`)
+
+1. Parse the description.
+2. Determine project path: `--project` flag, else current cwd.
+3. Append to `backlog[]`:
+
+```json
+{
+  "id": <next>,
+  "kind": "goal",
+  "task": "<description>",
+  "project": "<absolute path>",
+  "added": "YYYY-MM-DD",
+  "branch": "blitz/goal-<id>",
+  "autoPush": false,
+  "lastTouched": null,
+  "incrementCount": 0
+}
+```
+
+4. Confirm:
+
+```text
+✅ Added goal #[id] to backlog
+   Goal:    <description>
+   Project: <project path>
+   Branch:  blitz/goal-<id> (will be created on first increment fire)
+   Plan:    ~/blitz/goals/<id>/plan.md (will be written on first fire)
+```
+
+The plan is **not** written at queue time. The first fire on this goal writes it.
+
+### M-GOAL-LIST — Show goals
+
+Display every `kind: "goal"` item with id, description, project, branch, increment count, and last-touched date. If none, print: `No goals. Add one with /blitz goal add <description>.`
+
+### M-GOAL-REVIEW — Review a goal's branch
+
+Syntax: `/blitz goal review <id>`
+
+1. Look up the goal item; load `branch` field.
+2. In the goal's `project` directory, run:
+
+```bash
+git log <branch> ^main --oneline
+git diff main..<branch> --stat
+```
+
+3. Print plan.md status: count of `[x]`, `[ ]`, and `[~]` items.
+4. End with a hint: `Merge with: git checkout main && git merge <branch>`.
+
+If the branch doesn't exist, print: `No commits yet on this goal.`
+
+### M-GOAL-LOG — Show increment history
+
+Syntax: `/blitz goal log <id>`
+
+Read every result file in `~/blitz/runs/*/goal-<id>-*.md` (sorted by timestamp), print the top-level heading and the first paragraph of each.
+
+### M-GOAL-REMOVE — Remove a goal
+
+Syntax: `/blitz goal remove <id>`
+
+Remove the item from `backlog[]`. **Do not** delete the branch or plan.md. Print:
+
+```text
+✅ Removed goal #[id]: <description>
+   The branch blitz/goal-<id> and plan.md were left in place.
+   Clean up manually: git branch -D blitz/goal-<id> && rm -rf ~/blitz/goals/<id>
+```
+
+### M-GOAL-AUTOPUSH — Toggle autopush
+
+Syntax: `/blitz goal autopush <id> on|off`
+
+Set `autoPush` on the goal item. When `true`, increment fires also `git push origin <branch>` after committing. Default is `off`.
+
+Confirm:
+
+```text
+✅ Goal #[id] autopush: <on|off>
+```
+
+---
+
 ## M-RUN — Run the Backlog (default `/blitz`)
 
 This is the main path. Takes the top items off the backlog, spawns parallel agents, persists output.
