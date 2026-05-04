@@ -287,6 +287,126 @@ Hard rules:
 
 ---
 
+## M-AUDIT — Audit Lifecycle
+
+Audits are per-project maintenance rotations that produce read-only reports. Audit items live in `backlog[]` with `kind: "audit"`. Audits never modify project files.
+
+### M-AUDIT-ENABLE — Enable an audit rotation
+
+Syntax: `/blitz audit enable <project>` (project may be a path or `.` for cwd)
+
+1. Resolve the project to an absolute path. If a `kind: "audit"` item already exists for that project, print `Already enabled` and exit.
+2. Append to `backlog[]`:
+
+```json
+{
+  "id": <next>,
+  "kind": "audit",
+  "project": "<absolute path>",
+  "rotation": ["security","deadcode","tests","deps","docs","todos"],
+  "rotationIdx": 0,
+  "lastSwept": null,
+  "promotedFindings": []
+}
+```
+
+3. Confirm:
+
+```text
+✅ Audit rotation enabled for <project>.
+   Audits will rotate: security → deadcode → tests → deps → docs → todos.
+   Run /blitz audit run <project> to trigger one immediately.
+```
+
+### M-AUDIT-DISABLE — Disable an audit
+
+Syntax: `/blitz audit disable <project>`
+
+Remove the matching `kind: "audit"` item. Confirm.
+
+### M-AUDIT-LIST — Show enabled audits
+
+Print one row per audit item: project, last-swept date, next audit type (`rotation[rotationIdx]`), promoted-finding count.
+
+### M-AUDIT-RUN — Run the next audit immediately
+
+Syntax: `/blitz audit run <project>`
+
+Bypass the auto-fire scheduler and run the next audit type for this project right now. Same flow as Audit Fire Flow below.
+
+## Audit Fire Flow
+
+When the auto-fire pulls a `kind: "audit"` item:
+
+1. Pick the next audit type: `audit_type = item.rotation[item.rotationIdx]`.
+2. Spawn one general-purpose agent with this prompt template:
+
+```text
+Working directory: <audit.project>
+
+You are an audit agent. Run the <audit_type> audit on this project. You
+MUST NOT modify any project files. Output is read-only.
+
+Audit type: <audit_type>
+
+Definitions:
+  security  - OWASP-style issues. Look for hardcoded secrets, SQL/command
+              injection, unsanitized inputs, weak crypto, missing auth
+              checks. Output: file:line + severity (high/medium/low).
+  deadcode  - Unused exports, unreachable branches, orphaned files.
+              Output: file:line + reason.
+  tests     - Public functions/classes with no test coverage. Output:
+              file:line + symbol name.
+  deps      - Outdated packages, breaking-change risk. Output: package
+              name + current → latest version + risk note.
+  docs      - Public APIs (exports, public methods) without docstrings or
+              JSDoc. Output: file:line + symbol name.
+  todos     - TODOs/FIXMEs grouped by age (from git blame) and severity.
+              Output: file:line + age + content.
+
+Write a markdown report to <output_dir>/audit-<project_slug>-<audit_type>.md
+with this structure:
+  # <audit_type> audit — <project_slug>
+  Date: <YYYY-MM-DD>
+  Total findings: <N>
+
+  ## Findings
+  ### Finding 1: <one-line summary>
+  Severity: <high|medium|low>
+  Location: <file>:<line>
+  Hash: <sha256 of: file_path + ":" + line + ":" + audit_type + ":" + finding_summary>
+  Detail: <2-4 sentences>
+
+  ### Finding 2: ...
+
+Sort findings by severity (high first), then by file path.
+```
+
+3. After the agent finishes, the skill (not the agent) does:
+   a. Read the report. Parse `Hash:` lines from each finding.
+   b. Find the highest-severity finding whose hash is **not** in `item.promotedFindings`.
+   c. If one exists, append a new `kind: "task"` item to `backlog[]`:
+
+```json
+{
+  "id": <next>,
+  "kind": "task",
+  "task": "<finding summary> (<file>:<line>)",
+  "project": "<audit.project>",
+  "added": "<YYYY-MM-DD>",
+  "source": { "auditId": <audit.id>, "auditType": "<audit_type>", "findingHash": "<sha256>" }
+}
+```
+
+   d. Append the finding's hash to `item.promotedFindings`.
+   e. Update `item.rotationIdx = (item.rotationIdx + 1) % len(item.rotation)`.
+   f. Update `item.lastSwept = now`.
+4. Save the config.
+
+If every finding's hash is already in `promotedFindings`, the report is still written but no task is auto-promoted. The skill prints `All <audit_type> findings already promoted; nothing new to triage.`
+
+---
+
 ## M-RUN — Run the Backlog (default `/blitz`)
 
 This is the main path. Takes the top items off the backlog, spawns parallel agents, persists output.
