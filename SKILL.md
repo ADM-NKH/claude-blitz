@@ -471,9 +471,11 @@ Create `~/blitz/runs/<timestamp>/` where timestamp is `YYYY-MM-DD_HHMM-<trigger>
 
 ### R5 — Spawn Agents in Parallel
 
-In **one** Agent tool call block (multiple `<invoke>` blocks in the same message), spawn one agent per task. Each agent prompt must include:
+In **one** Agent tool call block (multiple `<invoke>` blocks in the same message), spawn one agent per pulled item. Route by `kind`:
 
-```
+**For `kind: "task"`** — use this prompt template:
+
+```text
 Working directory: <task.project>
 
 Task: <task.task>
@@ -485,11 +487,17 @@ or truncate.
 When you finish, write your full output to:
   <output_dir>/<task_id>-<short-slug>.md
 
-Use the Write tool to create that file. Include a top-level heading with the
-task description, then your full work.
+Use the Write tool to create that file. Include a top-level heading with
+the task description, then your full work.
 ```
 
 Use `subagent_type: "general-purpose"` for code/writing tasks, `"Explore"` for pure research, `"Plan"` for architecture-only tasks. Default to general-purpose.
+
+**For `kind: "goal"`** — see Goal Fire Flow above. Choose planning-fire or increment-fire prompt based on plan.md state.
+
+**For `kind: "audit"`** — see Audit Fire Flow above. Use the audit agent prompt template.
+
+After all agents finish, run kind-specific post-processing (R6 covers this).
 
 ### R6 — Write Run Summary
 
@@ -512,6 +520,13 @@ Remaining: <N> items
 ```
 
 Then **remove the completed tasks from the backlog** (so they don't get rerun next time).
+
+**Kind-aware backlog updates** (after summary is written):
+
+- For each completed `kind: "task"` item: remove from `backlog[]` (v0.1 behavior).
+- For each completed `kind: "goal"` item: update `lastTouched = now` and `incrementCount += 1` (planning fire keeps incrementCount at 0). Goal stays in backlog.
+- For each completed `kind: "audit"` item: run the audit-finding promotion logic (see Audit Fire Flow step 3). Audit stays in backlog.
+- For each item that was skipped by the idle gate: leave it untouched.
 
 ### R7 — Final Report
 
