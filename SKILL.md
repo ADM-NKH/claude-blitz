@@ -189,6 +189,104 @@ Confirm:
 
 ---
 
+## Goal Fire Flow
+
+When the auto-fire pulls a `kind: "goal"` item, route to one of two flows based on plan.md state.
+
+### Planning fire (no plan, or empty plan)
+
+This is the **first fire** for a goal. **No code is written.** The agent only produces a plan.
+
+1. Spawn one general-purpose agent with this prompt template:
+
+```text
+Working directory: <goal.project>
+
+You are the planning agent for a long-term goal. Your sole job is to write
+a plan.md file. You will NOT write any code.
+
+Goal: <goal.task>
+
+Read the project state (git log -30, top-level file tree, README.md if it
+exists, package.json or equivalent) and produce a numbered Markdown
+checklist of small, mergeable, demoable increments toward the goal.
+
+Each increment must:
+- Be self-contained (no item depends on incomplete prior items)
+- Be mergeable on its own (could ship as a single PR)
+- Be small enough that one focused agent could finish it in one fire
+- Have a clear "done" criterion
+
+Write the checklist to: ~/blitz/goals/<goal.id>/plan.md
+
+Format:
+  # Plan: <goal.task>
+  Project: <goal.project>
+  Created: <date>
+
+  ## Increments
+  - [ ] 1. <one-line summary>: <2-3 sentence detail>
+  - [ ] 2. ...
+
+Also write a result file to <output_dir>/goal-<goal.id>-plan.md containing
+the plan and a short paragraph explaining your reasoning (why these
+increments, in this order).
+
+Do NOT make any commits. Do NOT modify any project files.
+```
+
+2. After the agent finishes, update the goal item: `lastTouched = now`, `incrementCount` stays at 0.
+3. The goal will hit the increment-fire flow on its next fire.
+
+### Increment fire (plan.md exists with at least one unchecked item)
+
+1. Read `~/blitz/goals/<goal.id>/plan.md`. If every item is `[x]`, the goal is done — set a marker comment in plan.md (`> Goal complete: YYYY-MM-DD`), update the goal item with `lastTouched = now`, and exit. Skip auto-promoting a "review and merge" task since the user knows from `/blitz goal list`.
+2. Pick the lowest-numbered unchecked item.
+3. Spawn one general-purpose agent with this prompt template:
+
+```text
+Working directory: <goal.project>
+
+You are an increment agent for goal #<goal.id>: "<goal.task>"
+
+The full plan is at ~/blitz/goals/<goal.id>/plan.md. The increment you must
+implement is item #<N>: <item summary>.
+
+Steps:
+1. Switch to (or create from main) the long-lived branch: <goal.branch>.
+   - git fetch origin; git checkout <goal.branch> 2>/dev/null || git checkout -b <goal.branch> main
+   - git rebase main (only if no conflicts; otherwise stay on the branch as-is and note in result)
+2. Implement item #<N>. Read enough of the codebase to do this correctly.
+3. If the project has a test command and it runs in under 60 seconds, run
+   it and confirm it passes. Detect the command from package.json scripts,
+   pytest presence, or similar. If detection fails or tests are slow, skip
+   them and note in the result.
+4. Commit: git add -A && git commit -m "blitz(goal-<goal.id>): <item summary>"
+5. If <goal.autoPush> is true, push: git push origin <goal.branch>
+6. Update plan.md: change item #<N> from [ ] to [x], append a one-liner
+   with the commit SHA: "      ✓ <commit-sha-short>: <one-line summary>"
+7. Write a result file to <output_dir>/goal-<goal.id>-<slug>.md with:
+   - Heading: # Goal #<goal.id> increment: <item summary>
+   - What was done (bullet list of changes)
+   - Why this approach
+   - Branch + commit SHA + any push status
+   - What's next (the next unchecked plan item, if any)
+
+If the picked item is no longer applicable (e.g., already done by user, or
+the codebase has changed in a way that invalidates it), mark it [~]
+(skipped) with a one-line reason in plan.md and pick the next unchecked
+item.
+
+Hard rules:
+- Only commit on <goal.branch>. Never on main.
+- Never push unless <goal.autoPush> is true.
+- Never edit plan.md items above the one you picked.
+```
+
+4. After the agent finishes, update the goal item: `lastTouched = now`, `incrementCount += 1`.
+
+---
+
 ## M-RUN — Run the Backlog (default `/blitz`)
 
 This is the main path. Takes the top items off the backlog, spawns parallel agents, persists output.
